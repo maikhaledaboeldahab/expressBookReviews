@@ -1,30 +1,28 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 let books = require("./booksdb.js");
 const regd_users = express.Router();
 
 let users = [];
 
-// Middleware to verify JWT
+// --- Middleware & Auth Logic ---
+
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
-
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "No token provided or invalid format" });
+    return res.status(401).json({ message: "No token provided" });
   }
-
   const token = authHeader.split(" ")[1];
-
   try {
     const decoded = jwt.verify(token, "access");
-    req.user = decoded.data; // This is the username
+    req.user = decoded.data;
     next();
   } catch (err) {
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({ message: "Invalid token" });
   }
 };
 
-// Check if username and password match
 const authenticatedUser = (username, password) => {
   return users.some(user => user.username === username && user.password === password);
 };
@@ -32,25 +30,11 @@ const authenticatedUser = (username, password) => {
 // 🔐 Login
 regd_users.post("/login", (req, res) => {
   const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ message: "Username and password are required" });
-  }
-
   if (authenticatedUser(username, password)) {
-    let accessToken = jwt.sign(
-      { data: username },
-      "access",
-      { expiresIn: "1h" }
-    );
-
-    return res.status(200).json({
-      message: "Login successful",
-      token: accessToken
-    });
-  } else {
-    return res.status(401).json({ message: "Invalid login credentials" });
+    let accessToken = jwt.sign({ data: username }, "access", { expiresIn: "1h" });
+    return res.status(200).json({ message: "Login successful", token: accessToken });
   }
+  return res.status(401).json({ message: "Invalid credentials" });
 });
 
 // ✍️ Add / Modify Review
@@ -59,62 +43,62 @@ regd_users.put("/auth/review/:isbn", verifyToken, (req, res) => {
   const reviewContent = req.body.review;
   const username = req.user;
 
-  if (!reviewContent) {
-    return res.status(400).json({ message: "Review content is missing" });
+  if (books[isbn]) {
+    books[isbn].reviews[username] = reviewContent;
+    return res.status(200).json({ message: "Review added/updated", reviews: books[isbn].reviews });
   }
-
-  if (!books[isbn]) {
-    return res.status(404).json({ message: "Book not found" });
-  }
-
-  // Ensure the reviews object exists for this book
-  if (!books[isbn].reviews) {
-    books[isbn].reviews = {};
-  }
-
-  // Add or update review indexed by username
-  books[isbn].reviews[username] = reviewContent;
-
-  return res.status(200).json({
-    message: `Review for ISBN ${isbn} updated by ${username}`,
-    reviews: books[isbn].reviews
-  });
+  return res.status(404).json({ message: "Book not found" });
 });
 
+// --- Tasks 10-13 using Axios ---
+const API_URL = "http://localhost:5000";
 
+// Task 10: Get all books – Using async callback function
+const getAllBooks = async () => {
+    try {
+        const response = await axios.get(`${API_URL}/`);
+        console.log("Task 10 (Async/Await):", response.data);
+        return response.data;
+    } catch (error) {
+        console.error(error);
+    }
+};
 
-const axios = require('axios');
+// Task 11: Search by ISBN – Using Promises
+const getBookByISBN = (isbn) => {
+    axios.get(`${API_URL}/isbn/${isbn}`)
+        .then(response => {
+            console.log("Task 11 (Promises):", response.data);
+        })
+        .catch(err => console.log(err));
+};
 
-// Task 10
-async function getAllBooks() {
-    const response = await axios.get('http://localhost:5000/');
-    return response.data;
-}
+// Task 12: Search by Author - Using Async/Await
+const getBookByAuthor = async (author) => {
+    try {
+        const response = await axios.get(`${API_URL}/author/${author}`);
+        console.log("Task 12 (Async/Await):", response.data);
+    } catch (error) {
+        console.error(error);
+    }
+};
 
-// Task 11
-function getBookByISBN(isbn) {
-    return axios.get(`http://localhost:5000/isbn/${isbn}`)
-        .then(res => res.data);
-}
+// Task 13: Search by Title - Using Async/Await
+const getBookByTitle = async (title) => {
+    try {
+        const response = await axios.get(`${API_URL}/title/${title}`);
+        console.log("Task 13 (Async/Await):", response.data);
+    } catch (error) {
+        console.error(error);
+    }
+};
 
-// Task 12
-async function getBookByAuthor(author) {
-    const response = await axios.get(`http://localhost:5000/author/${author}`);
-    return response.data;
-}
-
-// Task 13
-async function getBookByTitle(title) {
-    const response = await axios.get(`http://localhost:5000/title/${title}`);
-    return response.data;
-}
-
+// --- Combined Exports ---
 module.exports = {
+    authenticated: regd_users,
+    users: users,
     getAllBooks,
     getBookByISBN,
     getBookByAuthor,
     getBookByTitle
 };
-
-module.exports.authenticated = regd_users;
-module.exports.users = users;
